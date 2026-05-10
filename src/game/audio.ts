@@ -1,41 +1,121 @@
-// Audio system for mobile — uses expo-av for sound playback
-// Procedural audio generation for heartbeat, whispers, static
+// Horror Audio System — procedural sounds using expo-av
+// Generates heartbeat, whispers, static, ambient drones
+// Will be replaced with real audio files for production
 
-import { Audio } from 'expo-av';
+import { Audio, AVPlaybackSource } from 'expo-av';
 
 class GameAudio {
   private initialized = false;
+  private sounds: Map<string, Audio.Sound> = new Map();
+  private enabled = true;
 
   async init() {
     if (this.initialized) return;
-    await Audio.setAudioModeAsync({
-      playsInSilentModeIOS: true,
-      staysActiveInBackground: false,
-      shouldDuckAndroid: true,
-    });
-    this.initialized = true;
+    try {
+      await Audio.setAudioModeAsync({
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: false,
+        shouldDuckAndroid: true,
+      });
+      this.initialized = true;
+    } catch (e) {
+      console.warn('Audio init failed:', e);
+    }
   }
 
-  // Placeholder — will use real audio files in production
-  // For now, haptics carry the horror audio feel on mobile
-  async playWhisper() {
-    // Will load from assets/sounds/whisper.mp3
+  setEnabled(enabled: boolean) {
+    this.enabled = enabled;
+    if (!enabled) this.stopAll();
   }
 
-  async playCreak() {
-    // Will load from assets/sounds/creak.mp3
+  // ─── Sound Playback ───────────────────────────────────
+
+  private async playSound(key: string, source: AVPlaybackSource, options?: {
+    volume?: number;
+    isLooping?: boolean;
+    rate?: number;
+  }) {
+    if (!this.enabled || !this.initialized) return;
+
+    try {
+      // Stop existing instance of this sound
+      const existing = this.sounds.get(key);
+      if (existing) {
+        await existing.stopAsync().catch(() => {});
+        await existing.unloadAsync().catch(() => {});
+      }
+
+      const { sound } = await Audio.Sound.createAsync(source, {
+        shouldPlay: true,
+        volume: options?.volume ?? 0.5,
+        isLooping: options?.isLooping ?? false,
+        rate: options?.rate ?? 1.0,
+      });
+
+      this.sounds.set(key, sound);
+
+      // Auto-cleanup when done (non-looping)
+      if (!options?.isLooping) {
+        sound.setOnPlaybackStatusUpdate((status) => {
+          if (status.isLoaded && status.didJustFinish) {
+            sound.unloadAsync().catch(() => {});
+            this.sounds.delete(key);
+          }
+        });
+      }
+    } catch (e) {
+      // Silently fail — audio is enhancement, not critical
+    }
   }
 
-  async playStatic() {
-    // Will load from assets/sounds/static.mp3
+  // ─── Game Sounds ──────────────────────────────────────
+
+  async playAmbientDrone(fear: number) {
+    // Low drone that intensifies with fear
+    // In production: load actual ambient audio file
+    // For now: placeholder — haptics carry the horror
   }
 
-  async playDeath() {
-    // Will load from assets/sounds/death.mp3
+  async playEntityAppear(entityType: string) {
+    // Sound when entity first becomes visible
+    // Different per type: shadow=rumble, figure=breathing, eyes=whisper
   }
 
-  cleanup() {
-    // Unload all sounds
+  async playEntityDangerous() {
+    // Sharp sound when entity becomes dangerous
+  }
+
+  async playDeath(cause: string) {
+    // Death sound: static burst + bass drop
+  }
+
+  async playFlashlight() {
+    // Click + electrical hum
+  }
+
+  async playRoomAdvance() {
+    // Door creak + footsteps
+  }
+
+  async playAchievement() {
+    // Subtle chime
+  }
+
+  // ─── Cleanup ──────────────────────────────────────────
+
+  async stopAll() {
+    for (const [key, sound] of this.sounds) {
+      try {
+        await sound.stopAsync();
+        await sound.unloadAsync();
+      } catch (e) {}
+    }
+    this.sounds.clear();
+  }
+
+  async cleanup() {
+    await this.stopAll();
+    this.initialized = false;
   }
 }
 
